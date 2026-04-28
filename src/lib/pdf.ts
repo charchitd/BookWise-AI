@@ -1,85 +1,104 @@
-const pdfParse = require('pdf-parse');
-import { createAdminClient } from './supabase';
+if (typeof process !== 'undefined') {
+  if (typeof (global as any).DOMMatrix === 'undefined') {
+    (global as any).DOMMatrix = class DOMMatrix {}
+  }
+  if (typeof (global as any).Path2D === 'undefined') {
+    (global as any).Path2D = class Path2D {}
+  }
+}
 
-export async function extractText(storageUrl: string) {
+import { createAdminClient } from './supabase'
+
+export async function extractText(storageUrl: string): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage.from('books').download(storageUrl)
-  
-  if (error || !data) {
-    throw new Error('Failed to download PDF from storage')
-  }
-  
+
+  if (error || !data) throw new Error('Failed to download PDF from storage')
+
   const arrayBuffer = await data.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
+
+  // pdf-parse uses a function API
+  const pdfParse = (await import('pdf-parse')).default || await import('pdf-parse');
   
-  // Custom render page to include [PAGE_X]
-  const render_page = (pageData: any) => {
+  function render_page(pageData: any) {
     let render_options = {
-      normalizeWhitespace: false,
-      disableCombineTextItems: false
+        normalizeWhitespace: false,
+        disableCombineTextItems: false
     }
-    return pageData.getTextContent(render_options).then(function(textContent: any) {
-      let text = '';
-      for (let item of textContent.items) {
-        text += item.str + ' ';
-      }
-      return `\n[PAGE_${pageData.pageIndex + 1}]\n` + text;
-    })
+
+    return pageData.getTextContent(render_options)
+    .then(function(textContent: any) {
+        let lastY, text = '';
+        for (let item of textContent.items) {
+            if (lastY == item.transform[5] || !lastY){
+                text += item.str;
+            }  
+            else{
+                text += '\n' + item.str;
+            }    
+            lastY = item.transform[5];
+        }
+        return `\n[PAGE_${pageData.pageIndex + 1}]\n` + text;
+    });
   }
 
-  const pdfData = await pdfParse(buffer, { pagerender: render_page })
-  return pdfData.text
+  const options = {
+      pagerender: render_page
+  }
+
+  const pdfParseFn = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default;
+  const result = await pdfParseFn(buffer, options);
+
+  const text = result.text;
+  console.log('RAW TEXT SAMPLE:', text.substring(0, 500))
+  return text
 }
 
 export function segmentChapters(text: string) {
-  // detect chapter boundaries using regex for Chapter N, numbered headings, and TOC patterns
-  const chapterRegex = /\n(?:CHAPTER|Chapter)\s+([A-Z0-9]+)[\s:]*(.*)/g;
-  const chapters = [];
-  let match;
-  let lastIndex = 0;
-  let lastChapter: any = null;
+  const chapterRegex = /\n(?:CHAPTER|Chapter)\s+([A-Z0-9]+)[\s:]*(.*)/g
+  const chapters = []
+  let match
+  let lastIndex = 0
+  let lastChapter: any = null
 
   const getPageNum = (str: string, position: number) => {
-    const substr = str.substring(0, position);
-    const matches = [...substr.matchAll(/\[PAGE_(\d+)\]/g)];
-    if (matches.length > 0) {
-      return parseInt(matches[matches.length - 1][1]);
-    }
-    return 1; // Default if not found
+    const substr = str.substring(0, position)
+    const matches = [...substr.matchAll(/\[PAGE_(\d+)\]/g)]
+    return matches.length > 0 ? parseInt(matches[matches.length - 1][1]) : 1
   }
 
   while ((match = chapterRegex.exec(text)) !== null) {
     if (lastChapter) {
-      const content = text.substring(lastIndex, match.index).trim();
-      lastChapter.content = content;
-      lastChapter.pageEnd = getPageNum(text, match.index);
-      chapters.push(lastChapter);
+      lastChapter.content = text.substring(lastIndex, match.index).trim()
+      lastChapter.pageEnd = getPageNum(text, match.index)
+      chapters.push(lastChapter)
     }
-    const pageNum = getPageNum(text, match.index);
+    const pageNum = getPageNum(text, match.index)
     lastChapter = {
       num: chapters.length + 1,
       title: match[2]?.trim() || `Chapter ${match[1]}`,
       pageStart: pageNum,
-      pageEnd: pageNum, // will be updated
-      content: ""
-    };
-    lastIndex = match.index + match[0].length;
+      pageEnd: pageNum,
+      content: '',
+    }
+    lastIndex = match.index + match[0].length
   }
 
   if (lastChapter) {
-    lastChapter.content = text.substring(lastIndex).trim();
-    lastChapter.pageEnd = getPageNum(text, text.length);
-    chapters.push(lastChapter);
+    lastChapter.content = text.substring(lastIndex).trim()
+    lastChapter.pageEnd = getPageNum(text, text.length)
+    chapters.push(lastChapter)
   } else {
-    // If no chapters found, treat the whole book as "Full Text"
+    // No chapter headings found — treat whole book as one section
     chapters.push({
       num: 1,
-      title: "Full Text",
+      title: 'Full Text',
       pageStart: 1,
       pageEnd: getPageNum(text, text.length),
-      content: text.trim()
-    });
+      content: text.trim(),
+    })
   }
 
-  return chapters;
+  return chapters
 }
