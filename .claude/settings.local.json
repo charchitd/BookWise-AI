@@ -9,7 +9,8 @@
       "Bash(node -e \"const { PDFParse } = require\\('pdf-parse'\\); console.log\\(typeof PDFParse\\)\")",
       "Bash(node -e ' *)",
       "Bash(node -e \"console.log\\(require\\('./node_modules/pdf-parse/package.json'\\).version\\)\")",
-      "Bash(node -e *)"
+      "Bash(node -e *)",
+      "mcp__plugin_claude-mem_mcp-search__get_observations"
     ]
   }
 }

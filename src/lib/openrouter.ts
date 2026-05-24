@@ -5,7 +5,7 @@ interface Message {
   content: string
 }
 
-export async function streamOpenRouter(messages: Message[], model = "anthropic/claude-3.7-sonnet"): Promise<ReadableStream<Uint8Array>> {
+export async function streamOpenRouter(messages: Message[], model = "google/gemini-2.5-flash"): Promise<ReadableStream<Uint8Array>> {
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {
@@ -56,7 +56,7 @@ export async function streamOpenRouter(messages: Message[], model = "anthropic/c
   })
 }
 
-export async function callOpenRouter(systemPrompt: string, userPrompt: string, model = "google/gemini-flash-1.5"): Promise<string> {
+export async function callOpenRouter(systemPrompt: string, userPrompt: string, model = "google/gemini-2.5-flash"): Promise<string> {
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {

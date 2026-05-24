@@ -6,7 +6,7 @@ import { createBrowserClient } from "@/lib/supabase"
 import { Book, Chapter, Concept } from "@/types"
 import {
   BookOpen, MessageSquare, Brain, ChevronLeft,
-  ChevronDown, ChevronUp, Star, Zap, Target
+  ChevronDown, ChevronUp, Star, Zap, Target, Mic
 } from "lucide-react"
 
 function DifficultyDots({ level }: { level: number | null }) {
@@ -108,6 +108,12 @@ export default function BookDetailPage() {
         {/* CTAs */}
         <div className="flex gap-3 shrink-0">
           <Link
+            href={`/books/${id}/course`}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 border border-transparent text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:opacity-90 transition-all"
+          >
+            <Star className="w-4 h-4" /> Start Course
+          </Link>
+          <Link
             href={`/tutor?bookId=${id}`}
             className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white text-sm rounded-lg hover:bg-white/10 transition-colors"
           >
@@ -118,6 +124,12 @@ export default function BookDetailPage() {
             className="flex items-center gap-2 px-4 py-2 bg-[#C8502A] text-white text-sm rounded-lg hover:bg-[#b04523] transition-colors"
           >
             <Brain className="w-4 h-4" /> Take a Quiz
+          </Link>
+          <Link
+            href={`/books/${id}/voice-buddy`}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:opacity-90 transition-all"
+          >
+            <Mic className="w-4 h-4" /> Talk to Read
           </Link>
         </div>
       </div>

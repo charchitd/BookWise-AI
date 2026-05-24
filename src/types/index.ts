@@ -93,3 +93,10 @@ export interface UserUsage {
   plan: string | null;
   created_at: string | null;
 }
+
+export interface Profile {
+  id: string;
+  display_name: string | null;
+  total_learning_minutes: number;
+  created_at: string | null;
+}

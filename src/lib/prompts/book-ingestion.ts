@@ -1,19 +1,32 @@
-export function buildIngestionPrompt(chapterContent: string, chapterNum: number, chapterTitle: string) {
-  const systemPrompt = `You are an expert curriculum designer extracting structured educational knowledge from book chapters. You must respond with ONLY valid JSON and no other text. Do NOT wrap the JSON in markdown code blocks, just return the raw JSON object.`
-  
-  const userPrompt = `Extract key educational knowledge from Chapter ${chapterNum}: ${chapterTitle}.
+export function buildIngestionPrompt(
+  chapterContent: string,
+  sessionNum: number,
+  pageStart: number,
+  pageEnd: number,
+  dailyGoalMinutes: number,
+) {
+  const systemPrompt = `You are an expert curriculum designer turning raw PDF text into structured learning sessions. Respond with ONLY valid raw JSON — no markdown fences, no extra text.`
 
-Content to analyze:
-${chapterContent.substring(0, 20000)} // Truncated to stay within token limits if excessively long
+  const userPrompt = `Analyze this content from pages ${pageStart}–${pageEnd} and create a focused learning session for a student with ${dailyGoalMinutes} minutes/day to study.
 
-Return ONLY valid JSON in the exact following format:
+Content:
+${chapterContent.substring(0, 18000)}
+
+Return ONLY this JSON structure:
 {
-  "summary": "Detailed summary of the core concepts presented in this chapter...",
-  "concepts": ["Concept 1", "Concept 2", "Concept 3"],
-  "difficulty": 3
+  "title": "Concise, engaging session title based on the actual content (not just 'Session N')",
+  "summary": "Clear 3–5 sentence explanation of what this session covers, written as study notes the learner can read and understand immediately",
+  "concepts": ["Key concept 1", "Key concept 2", "Key concept 3", "Key concept 4", "Key concept 5"],
+  "difficulty": 3,
+  "quiz_hints": ["One sentence describing a good quiz question for concept 1", "One sentence for concept 2", "One sentence for concept 3"]
 }
 
-Ensure the "difficulty" field is an integer between 1 (very basic) and 5 (highly advanced).`
+Rules:
+- title: specific to the content, not generic
+- summary: written for a learner, not a table of contents
+- concepts: 4–8 specific, learnable concepts found in this exact content
+- difficulty: 1 (introductory) to 5 (expert-level)
+- quiz_hints: one testable question hint per concept (3 minimum)`
 
   return { systemPrompt, userPrompt }
 }

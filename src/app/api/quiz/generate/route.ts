@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     const { systemPrompt, userPrompt } = buildQuizPrompt(conceptNames, chapterSummaries)
 
     // Use gemini-flash via OpenRouter for fast, cheap quiz generation
-    const raw = await callOpenRouter(systemPrompt, userPrompt, "google/gemini-flash-1.5")
+    const raw = await callOpenRouter(systemPrompt, userPrompt, "google/gemini-2.5-flash")
 
     const cleaned = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim()
     const questions = JSON.parse(cleaned)

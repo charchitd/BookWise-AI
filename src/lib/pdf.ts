@@ -12,93 +12,92 @@ import { createAdminClient } from './supabase'
 export async function extractText(storageUrl: string): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.storage.from('books').download(storageUrl)
-
   if (error || !data) throw new Error('Failed to download PDF from storage')
 
   const arrayBuffer = await data.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
 
-  // pdf-parse uses a function API
-  const pdfParse = (await import('pdf-parse')).default || await import('pdf-parse');
-  
+  const pdfParse = (await import('pdf-parse')).default || await import('pdf-parse')
+
   function render_page(pageData: any) {
-    let render_options = {
-        normalizeWhitespace: false,
-        disableCombineTextItems: false
-    }
-
-    return pageData.getTextContent(render_options)
-    .then(function(textContent: any) {
-        let lastY, text = '';
-        for (let item of textContent.items) {
-            if (lastY == item.transform[5] || !lastY){
-                text += item.str;
-            }  
-            else{
-                text += '\n' + item.str;
-            }    
-            lastY = item.transform[5];
+    return pageData.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false })
+      .then((textContent: any) => {
+        let lastY: number | undefined
+        let text = ''
+        for (const item of textContent.items) {
+          if (lastY === item.transform[5] || !lastY) {
+            text += item.str
+          } else {
+            text += '\n' + item.str
+          }
+          lastY = item.transform[5]
         }
-        return `\n[PAGE_${pageData.pageIndex + 1}]\n` + text;
-    });
+        return `\n[PAGE_${pageData.pageIndex + 1}]\n` + text
+      })
   }
 
-  const options = {
-      pagerender: render_page
-  }
-
-  const pdfParseFn = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default;
-  const result = await pdfParseFn(buffer, options);
-
-  const text = result.text;
-  console.log('RAW TEXT SAMPLE:', text.substring(0, 500))
-  return text
+  const pdfParseFn = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default
+  const result = await pdfParseFn(buffer, { pagerender: render_page })
+  console.log('RAW TEXT SAMPLE:', result.text.substring(0, 500))
+  return result.text
 }
 
-export function segmentChapters(text: string) {
-  const chapterRegex = /\n(?:CHAPTER|Chapter)\s+([A-Z0-9]+)[\s:]*(.*)/g
-  const chapters = []
-  let match
-  let lastIndex = 0
-  let lastChapter: any = null
+export interface PageSegment {
+  num: number
+  title: string
+  pageStart: number
+  pageEnd: number
+  content: string
+  estimatedMinutes: number
+}
 
-  const getPageNum = (str: string, position: number) => {
-    const substr = str.substring(0, position)
-    const matches = [...substr.matchAll(/\[PAGE_(\d+)\]/g)]
-    return matches.length > 0 ? parseInt(matches[matches.length - 1][1]) : 1
+/**
+ * Splits PDF text into learning sessions sized to the user's daily goal.
+ * Uses [PAGE_N] markers embedded during extraction.
+ * Each session targets ~half the daily goal so users can do 2 sessions/day.
+ */
+export function segmentByDailyGoal(text: string, dailyGoalMinutes: number): PageSegment[] {
+  // Split by page markers, keep page numbers
+  const pageRegex = /\[PAGE_(\d+)\]([\s\S]*?)(?=\[PAGE_\d+\]|$)/g
+  const pages: { num: number; content: string }[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = pageRegex.exec(text)) !== null) {
+    const content = match[2].trim()
+    if (content.length > 50) {
+      pages.push({ num: parseInt(match[1]), content })
+    }
   }
 
-  while ((match = chapterRegex.exec(text)) !== null) {
-    if (lastChapter) {
-      lastChapter.content = text.substring(lastIndex, match.index).trim()
-      lastChapter.pageEnd = getPageNum(text, match.index)
-      chapters.push(lastChapter)
-    }
-    const pageNum = getPageNum(text, match.index)
-    lastChapter = {
-      num: chapters.length + 1,
-      title: match[2]?.trim() || `Chapter ${match[1]}`,
-      pageStart: pageNum,
-      pageEnd: pageNum,
-      content: '',
-    }
-    lastIndex = match.index + match[0].length
-  }
-
-  if (lastChapter) {
-    lastChapter.content = text.substring(lastIndex).trim()
-    lastChapter.pageEnd = getPageNum(text, text.length)
-    chapters.push(lastChapter)
-  } else {
-    // No chapter headings found — treat whole book as one section
-    chapters.push({
+  if (pages.length === 0) {
+    // Fallback: no page markers, treat as one session
+    return [{
       num: 1,
-      title: 'Full Text',
+      title: 'Full Document',
       pageStart: 1,
-      pageEnd: getPageNum(text, text.length),
+      pageEnd: 1,
       content: text.trim(),
+      estimatedMinutes: dailyGoalMinutes,
+    }]
+  }
+
+  // Target pages per session: 2 min/page, session = half daily goal, clamped 8–35 pages
+  const MINS_PER_PAGE = 2
+  const sessionTargetMins = Math.max(15, Math.min(45, Math.floor(dailyGoalMinutes / 2)))
+  const pagesPerSession = Math.max(8, Math.min(35, Math.round(sessionTargetMins / MINS_PER_PAGE)))
+
+  const segments: PageSegment[] = []
+  for (let i = 0; i < pages.length; i += pagesPerSession) {
+    const chunk = pages.slice(i, i + pagesPerSession)
+    segments.push({
+      num: segments.length + 1,
+      title: `Session ${segments.length + 1}`,   // placeholder — AI will rename
+      pageStart: chunk[0].num,
+      pageEnd: chunk[chunk.length - 1].num,
+      content: chunk.map(p => p.content).join('\n\n'),
+      estimatedMinutes: chunk.length * MINS_PER_PAGE,
     })
   }
 
-  return chapters
+  return segments
 }

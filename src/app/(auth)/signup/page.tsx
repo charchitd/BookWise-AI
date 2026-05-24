@@ -20,7 +20,7 @@ export default function SignupPage() {
     setError("")
     setLoading(true)
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${window.location.origin}/dashboard` },
@@ -29,6 +29,9 @@ export default function SignupPage() {
     if (error) {
       setError(error.message)
       setLoading(false)
+    } else if (data.session) {
+      router.push("/dashboard")
+      router.refresh()
     } else {
       setDone(true)
     }

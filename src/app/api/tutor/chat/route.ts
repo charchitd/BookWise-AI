@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       })),
     ]
 
-    const stream = await streamOpenRouter(openRouterMessages, "anthropic/claude-3.7-sonnet")
+    const stream = await streamOpenRouter(openRouterMessages, "google/gemini-2.5-flash")
 
     return new Response(stream, {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
