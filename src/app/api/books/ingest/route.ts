@@ -15,8 +15,18 @@ export async function POST(req: Request) {
     const { bookId } = await req.json()
     if (!bookId) return NextResponse.json({ error: 'Missing bookId' }, { status: 400 })
 
-    // Fetch daily goal to size sessions appropriately
     const admin = createAdminClient()
+
+    // Verify the book belongs to the authenticated user
+    const { data: book } = await admin
+      .from('books')
+      .select('id')
+      .eq('id', bookId)
+      .eq('user_id', user.id)
+      .single()
+    if (!book) return NextResponse.json({ error: 'Book not found' }, { status: 404 })
+
+    // Fetch daily goal to size sessions appropriately
     const { data: profile } = await admin
       .from('profiles')
       .select('daily_goal_minutes')
