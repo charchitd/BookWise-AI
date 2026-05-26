@@ -47,9 +47,25 @@ export async function POST(req: Request) {
     const raw = await callOpenRouter(systemPrompt, userPrompt, "google/gemini-2.5-flash")
 
     const cleaned = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim()
-    const questions = JSON.parse(cleaned)
+    const parsed = JSON.parse(cleaned)
 
-    return NextResponse.json({ questions, conceptIds: concepts.map((c) => c.id) })
+    // Validate AI response structure before sending to client
+    const questions = Array.isArray(parsed) ? parsed : parsed?.questions
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("AI returned invalid quiz structure: expected non-empty array")
+    }
+    const validQuestions = questions.filter((q: any) =>
+      typeof q.question === "string" &&
+      Array.isArray(q.options) &&
+      q.options.length >= 2 &&
+      typeof q.correct_index === "number" &&
+      typeof q.explanation === "string"
+    )
+    if (validQuestions.length === 0) {
+      throw new Error("AI returned questions missing required fields (question, options, correct_index, explanation)")
+    }
+
+    return NextResponse.json({ questions: validQuestions, conceptIds: concepts.map((c) => c.id) })
   } catch (error: any) {
     console.error("Quiz generate error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
