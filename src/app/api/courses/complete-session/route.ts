@@ -13,12 +13,16 @@ export async function POST(req: Request) {
 
     const admin = createAdminClient()
 
-    // Get the chapter to find bookId
+    // Get the chapter and verify it belongs to the requesting user via the book
     const { data: chapter } = await admin
       .from("chapters")
-      .select("book_id")
+      .select("book_id, books!inner(user_id)")
       .eq("id", chapterId)
       .single()
+
+    if (!chapter || (chapter.books as any)?.user_id !== user.id) {
+      return NextResponse.json({ error: "Chapter not found" }, { status: 404 })
+    }
 
     // Mark all concepts in this chapter as mastered
     const { error } = await admin
