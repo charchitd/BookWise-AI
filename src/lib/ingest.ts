@@ -43,7 +43,14 @@ export async function processBookIngestion(bookId: string, userId: string, daily
       for (let attempt = 1; attempt <= 2 && !success; attempt++) {
         try {
           const raw = await callOpenRouter(systemPrompt, userPrompt, 'google/gemini-2.5-flash')
-          const cleaned = raw.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+          
+          // Bulletproof JSON extractor: locate bounds of the primary JSON object
+          const startIdx = raw.indexOf('{')
+          const endIdx = raw.lastIndexOf('}')
+          if (startIdx === -1 || endIdx === -1) {
+            throw new Error("Could not find JSON bounds in raw model response")
+          }
+          const cleaned = raw.substring(startIdx, endIdx + 1)
           const parsed = JSON.parse(cleaned)
           title = parsed.title || seg.title
           summary = parsed.summary || ''
@@ -84,7 +91,7 @@ export async function processBookIngestion(bookId: string, userId: string, daily
 
       if (chErr || !chapter) {
         console.error(`Failed to insert session ${seg.num}:`, chErr)
-        return seg.pageEnd
+        return { pageEnd: seg.pageEnd, failed: true }
       }
 
       if (concepts.length > 0) {
@@ -105,16 +112,27 @@ export async function processBookIngestion(bookId: string, userId: string, daily
           .eq('id', chapter.id)
       }
 
-      return seg.pageEnd
+      return { pageEnd: seg.pageEnd, failed: false }
     }
 
     // Process in batches of 3 to avoid Vercel Serverless Timeouts while respecting API rate limits
     let maxPageEnd = 0;
+    let failedCount = 0;
     const BATCH_SIZE = 3;
     for (let i = 0; i < segments.length; i += BATCH_SIZE) {
       const batch = segments.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(batch.map(seg => processSegment(seg)));
-      maxPageEnd = Math.max(maxPageEnd, ...results);
+      for (const r of results) {
+        if (r.pageEnd > maxPageEnd) maxPageEnd = r.pageEnd;
+        if (r.failed) failedCount = failedCount + 1;
+      }
+    }
+
+    const failureRate = segments.length > 0 ? failedCount / segments.length : 0;
+    if (failureRate > 0.5) {
+      await supabase.from('books').update({ status: 'error' }).eq('id', bookId)
+      console.error(`INGEST ERROR: ${failedCount}/${segments.length} segments failed`)
+      throw new Error(`Too many segment failures: ${failedCount}/${segments.length}`)
     }
 
     await supabase
@@ -123,7 +141,7 @@ export async function processBookIngestion(bookId: string, userId: string, daily
       .eq('id', bookId)
 
     console.log('INGEST COMPLETE')
-    return { success: true, sessionCount: segments.length }
+    return { success: true, sessionCount: segments.length, failedSegments: failedCount }
   } catch (error: any) {
     console.error('INGEST FAILED:', error.message)
     await supabase.from('books').update({ status: 'failed' }).eq('id', bookId)
