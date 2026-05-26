@@ -9,7 +9,7 @@ export async function streamOpenRouter(messages: Message[], model = "google/gemi
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.Claude_API_Key}`,
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://bookwise.ai",
       "X-Title": "BookWise AI",
@@ -60,7 +60,7 @@ export async function callOpenRouter(systemPrompt: string, userPrompt: string, m
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.Claude_API_Key}`,
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://bookwise.ai",
       "X-Title": "BookWise AI",
