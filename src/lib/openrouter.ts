@@ -6,8 +6,11 @@ interface Message {
 }
 
 export async function streamOpenRouter(messages: Message[], model = "google/gemini-2.5-flash"): Promise<ReadableStream<Uint8Array>> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
+    signal: controller.signal,
     headers: {
       "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
@@ -20,7 +23,7 @@ export async function streamOpenRouter(messages: Message[], model = "google/gemi
       stream: true,
       max_tokens: 1024,
     }),
-  })
+  }).finally(() => clearTimeout(timeout))
 
   if (!res.ok) {
     const err = await res.text()
@@ -57,8 +60,11 @@ export async function streamOpenRouter(messages: Message[], model = "google/gemi
 }
 
 export async function callOpenRouter(systemPrompt: string, userPrompt: string, model = "google/gemini-2.5-flash"): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: "POST",
+    signal: controller.signal,
     headers: {
       "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
@@ -74,7 +80,7 @@ export async function callOpenRouter(systemPrompt: string, userPrompt: string, m
       max_tokens: 2000,
       temperature: 0.1,
     }),
-  })
+  }).finally(() => clearTimeout(timeout))
 
   if (!res.ok) {
     const err = await res.text()
