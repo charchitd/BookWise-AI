@@ -49,13 +49,13 @@ export async function POST(req: Request) {
 
     const { data: cert, error } = await admin
       .from("certificates")
-      .insert({
+      .upsert({
         user_id: user.id,
         book_id: bookId,
         book_title: book?.title ?? "Untitled",
         display_name: profile?.display_name ?? "Scholar",
         top_concepts: topConcepts?.map(c => c.name) ?? [],
-      })
+      }, { onConflict: "user_id,book_id", ignoreDuplicates: false })
       .select()
       .single()
 
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to issue certificate" }, { status: 500 })
     }
 
-    // Award 200 bonus XP for completing a course
+    // Award 200 bonus XP only after confirmed certificate insert
     await admin.rpc("increment_learning_minutes", {
       user_uuid: user.id,
       minutes_to_add: 100, // 200 XP bonus

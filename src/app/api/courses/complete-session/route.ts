@@ -56,21 +56,22 @@ export async function POST(req: Request) {
             admin.from("concepts").select("name").eq("book_id", chapter.book_id).limit(5),
           ])
 
-          await admin.from("certificates").insert({
+          const { error: certError } = await admin.from("certificates").upsert({
             user_id: user.id,
             book_id: chapter.book_id,
             book_title: book?.title ?? "Untitled",
             display_name: profile?.display_name ?? "Scholar",
             top_concepts: topConcepts?.map(c => c.name) ?? [],
-          })
+          }, { onConflict: "user_id,book_id", ignoreDuplicates: true })
 
-          // 200 XP bonus for finishing the course
-          await admin.rpc("increment_learning_minutes", {
-            user_uuid: user.id,
-            minutes_to_add: 100,
-          })
-
-          certificateIssued = true
+          // Only award XP when a new certificate was actually inserted
+          if (!certError) {
+            await admin.rpc("increment_learning_minutes", {
+              user_uuid: user.id,
+              minutes_to_add: 100,
+            })
+            certificateIssued = true
+          }
         }
       }
     }
