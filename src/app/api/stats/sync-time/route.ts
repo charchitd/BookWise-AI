@@ -9,8 +9,8 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const { minutes } = await req.json()
-    if (!minutes || typeof minutes !== "number" || minutes <= 0) {
-      return NextResponse.json({ error: "Invalid minutes" }, { status: 400 })
+    if (!minutes || typeof minutes !== "number" || minutes <= 0 || minutes > 180) {
+      return NextResponse.json({ error: "Invalid minutes: must be a number between 1 and 180" }, { status: 400 })
     }
 
     const admin = createAdminClient()
