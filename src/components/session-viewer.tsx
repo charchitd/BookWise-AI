@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import {
   Send, Bot, Loader2, CheckCircle, ArrowLeft, ArrowRight,
@@ -9,6 +9,8 @@ import {
 } from "lucide-react"
 import TimerWidget from "@/components/timer-widget"
 import AudioPlayer from "@/components/audio-player"
+import ReactMarkdown from "react-markdown"
+import { Rotate3d, Play, Pause, ChevronRight } from "lucide-react"
 
 interface XpToast { id: number; xp: number; streak: number }
 type LeftTab = "notes" | "audio" | "quiz"
@@ -60,7 +62,7 @@ export default function SessionViewer({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (SpeechRecognition) {
         recognitionRef.current = new SpeechRecognition()
         recognitionRef.current.continuous = false
@@ -167,13 +169,17 @@ export default function SessionViewer({
     const newResults = [...quizResults, correct]
     setQuizResults(newResults)
 
-    // Update mastery if correct
-    if (correct && chapter.concepts?.[quizIndex]) {
+    // Update mastery if correct — send full payload matching API contract
+    if (chapter.concepts?.length) {
       await fetch("/api/quiz/answer", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conceptId: chapter.concepts[quizIndex]?.id,
-          correct: true, attemptNumber: 1,
+          bookId: book.id,
+          chapterId: chapter.id,
+          questionJson: quizQuestions[quizIndex],
+          selectedIndex: idx,
+          correctIndex: quizQuestions[quizIndex].correct_index,
+          conceptIds: chapter.concepts.map((c: any) => c.id),
         }),
       })
     }
@@ -318,10 +324,60 @@ export default function SessionViewer({
             <>
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
                 <h3 className="text-base font-semibold mb-3 text-primary">Summary</h3>
-                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
-                  {chapter.summary || "No summary available."}
-                </p>
+                <div className="text-muted-foreground leading-relaxed text-sm">
+                  <ReactMarkdown
+                    components={{
+                      h3: ({ node, ...props }) => <h3 className="text-lg font-bold mt-4 mb-2 text-primary border-b border-white/10 pb-1" {...props} />,
+                      h4: ({ node, ...props }) => <h4 className="text-base font-semibold mt-3 mb-1 text-white" {...props} />,
+                      p: ({ node, ...props }) => <p className="mb-4 text-gray-300 leading-relaxed text-sm" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-4 space-y-1 text-gray-300 text-sm" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-4 space-y-1 text-gray-300 text-sm" {...props} />,
+                      li: ({ node, ...props }) => <li className="text-gray-300" {...props} />,
+                      table: ({ node, ...props }) => (
+                        <div className="overflow-x-auto my-6 rounded-xl border border-white/10 bg-white/5">
+                          <table className="w-full text-left border-collapse text-sm text-gray-300" {...props} />
+                        </div>
+                      ),
+                      thead: ({ node, ...props }) => <thead className="bg-white/10 text-white font-semibold border-b border-white/10" {...props} />,
+                      tbody: ({ node, ...props }) => <tbody className="divide-y divide-white/5" {...props} />,
+                      tr: ({ node, ...props }) => <tr className="hover:bg-white/5 transition-colors" {...props} />,
+                      th: ({ node, ...props }) => <th className="px-4 py-3" {...props} />,
+                      td: ({ node, ...props }) => <td className="px-4 py-3 font-mono text-xs md:text-sm" {...props} />,
+                      code: ({ node, className, children, ...props }) => {
+                        const match = /language-flowchart/.exec(className || "")
+                        if (match) {
+                          return <ThreeDFlowchart content={String(children)} />
+                        }
+                        return (
+                          <code className="bg-black/40 px-1.5 py-0.5 rounded text-pink-400 font-mono text-xs border border-white/5" {...props}>
+                            {children}
+                          </code>
+                        )
+                      },
+                      pre: ({ node, children, ...props }) => {
+                        const isFlowchart = React.Children.toArray(children).some(
+                          (child: any) => (child as any)?.props?.className?.includes("language-flowchart")
+                        )
+                        if (isFlowchart) {
+                          return <>{children}</>
+                        }
+                        return (
+                          <pre className="bg-black/50 border border-white/10 rounded-xl p-4 overflow-x-auto my-4 font-mono text-xs text-pink-300 whitespace-pre" {...props}>
+                            {children}
+                          </pre>
+                        )
+                      }
+                    }}
+                  >
+                    {chapter.summary || "No summary available."}
+                  </ReactMarkdown>
+                </div>
               </div>
+
+              {/* Dedicated 3D Knowledge Map */}
+              {chapter.concepts?.length > 0 && (
+                <ThreeDFlowchart concepts={chapter.concepts} />
+              )}
 
               {chapter.concepts?.length > 0 && (
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
@@ -532,6 +588,272 @@ export default function SessionViewer({
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// -------------------------------------------------------------
+// Interactive 3D Flowchart CSS Transforms Component (Pure React/CSS 3D)
+// -------------------------------------------------------------
+interface Node3D {
+  id: string
+  label: string
+  depth: number
+  type: string
+  x: number
+  y: number
+}
+
+interface Connection3D {
+  from: string
+  to: string
+}
+
+function ThreeDFlowchart({ content = "", concepts }: { content?: string; concepts?: any[] }) {
+  const [nodes, setNodes] = useState<Node3D[]>([])
+  const [connections, setConnections] = useState<Connection3D[]>([])
+  const [rotation, setRotation] = useState({ x: 25, y: -25 })
+  const [isRotating, setIsRotating] = useState(true)
+  const isDragging = useRef(false)
+  const previousMousePosition = useRef({ x: 0, y: 0 })
+  const animFrame = useRef<number | null>(null)
+
+  useEffect(() => {
+    // 1. Dual Mode: If structured concepts are provided, map them directly into a 3D Concept Map!
+    if (concepts && concepts.length > 0) {
+      const parsedNodes: Node3D[] = []
+      const parsedConnections: Connection3D[] = []
+      
+      concepts.forEach((concept, i) => {
+        const id = `concept_${concept.id || i}`
+        parsedNodes.push({
+          id,
+          label: concept.name || `Concept ${i + 1}`,
+          depth: i * 80,
+          type: i === 0 ? "start" : i === concepts.length - 1 ? "success" : "process",
+          x: (i % 2 === 0 ? -95 : 95) * (i === 0 ? 0 : 1),
+          y: i * 80 - 100
+        })
+        
+        if (i > 0) {
+          parsedConnections.push({
+            from: `concept_${concepts[i - 1].id || (i - 1)}`,
+            to: id
+          })
+        }
+      })
+      
+      setNodes(parsedNodes)
+      setConnections(parsedConnections)
+      return
+    }
+
+    // 2. Parse standard flowchart content block if provided
+    if (content) {
+      const lines = content.split("\n")
+      const parsedNodes: Node3D[] = []
+      const parsedConnections: Connection3D[] = []
+
+      let nodeIndex = 0
+      lines.forEach((line) => {
+        const clean = line.trim()
+        if (clean.startsWith("node:")) {
+          const parts = clean.substring(5).split("|").map((s) => s.trim())
+          if (parts.length >= 2) {
+            const id = parts[0]
+            const label = parts[1]
+            const depth = parts[2] ? parseInt(parts[2], 10) : 0
+            const type = parts[3] || "process"
+            
+            const x = (nodeIndex % 2 === 0 ? -90 : 90) * (nodeIndex === 0 ? 0 : 1)
+            const y = nodeIndex * 90 - 120
+
+            parsedNodes.push({ id, label, depth, type, x, y })
+            nodeIndex++
+          }
+        } else if (clean.startsWith("connect:")) {
+          const parts = clean.substring(8).split("->").map((s) => s.trim())
+          if (parts.length >= 2) {
+            parsedConnections.push({ from: parts[0], to: parts[1] })
+          }
+        }
+      })
+
+      // Fallback parser if syntax is raw
+      if (parsedNodes.length === 0) {
+        const rawSteps = lines
+          .map(l => l.replace(/^[-\d.*#\s]+/, "").trim())
+          .filter(l => l.length > 5 && !l.includes("{") && !l.includes("}"))
+          .slice(0, 5)
+
+        rawSteps.forEach((step, i) => {
+          const id = `node_${i}`
+          parsedNodes.push({
+            id,
+            label: step.length > 30 ? step.substring(0, 30) + "..." : step,
+            depth: i * 80,
+            type: i === 0 ? "start" : i === rawSteps.length - 1 ? "success" : "process",
+            x: (i % 2 === 0 ? -70 : 70) * (i === 0 ? 0 : 1),
+            y: i * 85 - 100
+          })
+          if (i > 0) {
+            parsedConnections.push({ from: `node_${i - 1}`, to: id })
+          }
+        })
+      }
+
+      setNodes(parsedNodes)
+      setConnections(parsedConnections)
+    }
+  }, [content, concepts])
+
+  useEffect(() => {
+    if (!isRotating) return
+
+    const tick = () => {
+      setRotation((prev) => ({
+        ...prev,
+        y: prev.y + 0.15, // Slow, premium orbit speed
+      }))
+      animFrame.current = requestAnimationFrame(tick)
+    }
+
+    animFrame.current = requestAnimationFrame(tick)
+    return () => {
+      if (animFrame.current) cancelAnimationFrame(animFrame.current)
+    }
+  }, [isRotating])
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDragging.current = true
+    setIsRotating(false)
+    previousMousePosition.current = { x: e.clientX, y: e.clientY }
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging.current) return
+    const deltaX = e.clientX - previousMousePosition.current.x
+    const deltaY = e.clientY - previousMousePosition.current.y
+
+    setRotation((prev) => ({
+      x: Math.max(-45, Math.min(45, prev.x - deltaY * 0.4)),
+      y: prev.y + deltaX * 0.4
+    }))
+
+    previousMousePosition.current = { x: e.clientX, y: e.clientY }
+  }
+
+  const handleMouseUpOrLeave = () => {
+    isDragging.current = false
+  }
+
+  return (
+    <div className="relative w-full border border-white/10 bg-black/40 rounded-2xl p-6 my-6 overflow-hidden select-none shadow-2xl transition-all duration-300">
+      <div className="absolute top-4 right-4 z-20 flex gap-2">
+        <button
+          onClick={() => setIsRotating(!isRotating)}
+          className="p-2 rounded-lg border border-white/10 bg-white/5 text-muted-foreground hover:text-white transition-colors cursor-pointer"
+          title={isRotating ? "Pause Orbit" : "Play Orbit"}
+        >
+          {isRotating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+        </button>
+        <button
+          onClick={() => setRotation({ x: 25, y: -25 })}
+          className="p-2 rounded-lg border border-white/10 bg-white/5 text-muted-foreground hover:text-white transition-colors cursor-pointer"
+          title="Reset Camera"
+        >
+          <Rotate3d className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-white/90 flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 animate-pulse" />
+          Interactive 3D Stage Workflow
+        </h4>
+        <p className="text-xs text-muted-foreground">Drag on the diagram to inspect depth, structure, and stage dependencies</p>
+      </div>
+
+      <div
+        className="w-full h-[360px] cursor-grab active:cursor-grabbing flex items-center justify-center relative overflow-hidden"
+        style={{ perspective: "1000px" }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
+      >
+        <div
+          className="w-[200px] h-[200px] relative transition-transform duration-75 ease-out"
+          style={{
+            transformStyle: "preserve-3d",
+            transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
+          }}
+        >
+          {/* Connection vectors drawn in CSS 3D space */}
+          {connections.map((conn, idx) => {
+            const fromNode = nodes.find((n) => n.id === conn.from)
+            const toNode = nodes.find((n) => n.id === conn.to)
+            if (!fromNode || !toNode) return null
+
+            const dx = toNode.x - fromNode.x
+            const dy = toNode.y - fromNode.y
+            const dz = toNode.depth - fromNode.depth
+            const length = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+            return (
+              <div
+                key={`conn_${idx}`}
+                className="absolute origin-left bg-gradient-to-r from-pink-500/40 to-violet-500/40 pointer-events-none rounded-full"
+                style={{
+                  transformStyle: "preserve-3d",
+                  left: `${fromNode.x + 100}px`,
+                  top: `${fromNode.y + 25}px`,
+                  width: `${length}px`,
+                  height: "2px",
+                  transform: `
+                    translate3d(0, 0, ${fromNode.depth}px)
+                    rotateY(${Math.atan2(-dz, dx) * (180 / Math.PI)}deg)
+                    rotateZ(${Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI)}deg)
+                  `,
+                }}
+              />
+            )
+          })}
+
+          {/* Glowing 3D Nodes */}
+          {nodes.map((node) => {
+            let colorClass = "from-pink-500/10 to-rose-500/10 border-pink-500/30 text-pink-300 shadow-[0_0_15px_rgba(244,63,94,0.15)]"
+            if (node.type === "start") {
+              colorClass = "from-violet-500/10 to-purple-500/10 border-purple-500/30 text-purple-300 shadow-[0_0_15px_rgba(139,92,246,0.15)]"
+            } else if (node.type === "success") {
+              colorClass = "from-emerald-500/10 to-teal-500/10 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+            }
+
+            return (
+              <div
+                key={node.id}
+                className={`absolute w-[200px] p-3 rounded-xl border bg-black/80 flex flex-col justify-between shadow-2xl backdrop-blur-md transition-all duration-300 hover:scale-105 hover:translate-z-[30px] hover:shadow-[0_0_25px_rgba(244,63,94,0.35)] ${colorClass}`}
+                style={{
+                  left: `${node.x}px`,
+                  top: `${node.y}px`,
+                  transform: `translate3d(0, 0, ${node.depth}px)`,
+                  transformStyle: "preserve-3d",
+                }}
+              >
+                <div className="text-[9px] uppercase tracking-widest font-semibold opacity-65 mb-1 flex items-center justify-between">
+                  <span>{node.type}</span>
+                  <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 font-mono">
+                    stage {node.depth / 80 + 1 | 0}
+                  </span>
+                </div>
+                <div className="text-xs md:text-sm font-semibold leading-snug text-white/90">
+                  {node.label}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
