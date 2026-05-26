@@ -203,15 +203,16 @@ export default function SessionViewer({
     setInput("")
     setIsStreaming(true)
 
-    const allMessages = [
-      { role: "user", content: `Note to AI: I am studying Session ${chapter.num}: "${chapter.title}". Focus answers on this topic.` },
-      ...messages, userMsg,
-    ]
+    const allMessages = [...messages, userMsg]
 
     try {
       const res = await fetch("/api/tutor/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId: book.id, messages: allMessages }),
+        body: JSON.stringify({
+          bookId: book.id,
+          messages: allMessages,
+          chapterContext: { num: chapter.num, title: chapter.title },
+        }),
       })
       if (!res.body) throw new Error("No response body")
       const reader = res.body.getReader()

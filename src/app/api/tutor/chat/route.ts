@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const { bookId, messages } = await req.json()
+    const { bookId, messages, persona, chapterContext } = await req.json()
     if (!bookId || !messages?.length) {
       return NextResponse.json({ error: "Missing bookId or messages" }, { status: 400 })
     }
@@ -39,7 +39,13 @@ export async function POST(req: Request) {
       .join("\n\n")
 
     // 3. Build system instructions combining book details and extensive domain knowledge
-    const systemPrompt = buildTutorSystemPrompt(book.title ?? "this book", chapterTextContext)
+    const neoPersona = persona === "neo"
+      ? `\n\nYou are "Neo", an enthusiastic anime-style study companion. Be highly conversational, concise, friendly, and energetic. Limit responses to 2-3 sentences so they sound natural when spoken aloud.`
+      : ""
+    const chapterFocus = chapterContext
+      ? `\n\nThe user is currently studying Session ${chapterContext.num}: "${chapterContext.title}". Focus your answers on this topic.`
+      : ""
+    const systemPrompt = buildTutorSystemPrompt(book.title ?? "this book", chapterTextContext) + neoPersona + chapterFocus
 
     // 5. Initialize the official Gemini SDK
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
@@ -52,8 +58,13 @@ export async function POST(req: Request) {
     // 6. Map standard conversation history into Gemini SDK parts
     const geminiContents: any[] = []
 
+    // Filter out any legacy fake-system messages injected as user role by old clients
+    const cleanMessages = messages.filter(
+      (m: { role: string; content: string }) => !m.content.startsWith("Note to AI:")
+    )
+
     // Map remaining messages (role "assistant" -> "model", others -> "user")
-    messages.forEach((m: { role: string; content: string }) => {
+    cleanMessages.forEach((m: { role: string; content: string }) => {
       geminiContents.push({
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }]

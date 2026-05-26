@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createBrowserClient } from "@/lib/supabase"
-import { ChevronLeft, Mic, MicOff, Loader2, Volume2 } from "lucide-react"
+import { ChevronLeft, Mic, MicOff, Loader2, Volume2, FileText } from "lucide-react"
 
 export default function VoiceBuddyPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +19,10 @@ export default function VoiceBuddyPage() {
   const [transcript, setTranscript] = useState("")
   const [femaleVoice, setFemaleVoice] = useState<SpeechSynthesisVoice | null>(null)
 
+  // PDF Split screen state
+  const [splitScreen, setSplitScreen] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+
   const recognitionRef = useRef<any>(null)
   const synthRef = useRef<SpeechSynthesis | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -26,11 +30,45 @@ export default function VoiceBuddyPage() {
   // Initialization
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("books").select("title").eq("id", id).single()
-      if (data) setBookTitle(data.title)
-      
-      // Initial intro from Read
-      setMessages([{ role: "assistant", content: `Hi, I'm Read! Let's brainstorm your book, "${data?.title || 'this book'}". What would you like to discuss?` }])
+      const { data } = await supabase
+        .from("books")
+        .select("title, storage_url")
+        .eq("id", id)
+        .single()
+
+      if (data) {
+        setBookTitle(data.title)
+        
+        // Initial intro from Neo in an energetic anime persona
+        setMessages([
+          { 
+            role: "assistant", 
+            content: `Hi there! I'm Neo, your anime study partner! ✨ Let's brainstorm your amazing book, "${data.title || 'this book'}" together! What cool concepts would you like to chat about first? 🌸` 
+          }
+        ])
+
+        // If storage_url exists, create signed URL for the PDF
+        if (data.storage_url) {
+          try {
+            const { data: signedData, error: signedError } = await supabase.storage
+              .from("books")
+              .createSignedUrl(data.storage_url, 3600)
+            if (signedData?.signedUrl) {
+              setPdfUrl(signedData.signedUrl)
+            }
+          } catch (err) {
+            console.error("Error creating signed URL for PDF:", err)
+          }
+        }
+      } else {
+        // Fallback intro
+        setMessages([
+          { 
+            role: "assistant", 
+            content: `Hi there! I'm Neo, your anime study partner! ✨ Let's brainstorm this book together! What would you like to chat about first? 🌸` 
+          }
+        ])
+      }
     }
     load()
   }, [id, supabase])
@@ -41,15 +79,46 @@ export default function VoiceBuddyPage() {
       synthRef.current = window.speechSynthesis
       const loadVoices = () => {
         const voices = synthRef.current?.getVoices() || []
-        const female = voices.find(v => v.name.includes("Female") || v.name.includes("Samantha") || v.name.includes("Zira") || v.name.includes("Victoria") || v.name.includes("Google UK English Female")) || voices[0]
-        setFemaleVoice(female || null)
+        
+        // Prioritize cute/clear female voices for an anime character feel
+        const prioritized = [
+          "Google US English",
+          "Microsoft Zira Desktop",
+          "Microsoft Zira",
+          "Samantha",
+          "Google UK English Female",
+          "Victoria",
+          "Karen",
+          "Moira"
+        ]
+        
+        let selected: SpeechSynthesisVoice | null = null
+        for (const name of prioritized) {
+          const found = voices.find(v => v.name.includes(name))
+          if (found) {
+            selected = found
+            break
+          }
+        }
+        
+        if (!selected) {
+          selected = voices.find(v => 
+            v.name.toLowerCase().includes("female") || 
+            v.name.toLowerCase().includes("zira") || 
+            v.name.toLowerCase().includes("samantha") ||
+            v.name.toLowerCase().includes("girl")
+          ) || voices[0]
+        }
+        
+        setFemaleVoice(selected || null)
       }
+      
       loadVoices()
       if (synthRef.current?.onvoiceschanged !== undefined) {
         synthRef.current.onvoiceschanged = loadVoices
       }
 
-      const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
       if (SpeechRecognition) {
         recognitionRef.current = new SpeechRecognition()
         recognitionRef.current.continuous = false
@@ -99,12 +168,20 @@ export default function VoiceBuddyPage() {
   const speakText = (text: string) => {
     if (!synthRef.current) return
     synthRef.current.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
+
+    // Clean emojis and special symbols so TTS engine doesn't speak them literally
+    const cleanText = text
+      .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+      .replace(/\*+/g, '') // remove markdown bold/italic asterisks
+      .trim()
+      
+    const utterance = new SpeechSynthesisUtterance(cleanText || text)
     if (femaleVoice) {
       utterance.voice = femaleVoice
     }
-    utterance.pitch = 1.1
-    utterance.rate = 1.05
+    // High-pitched, enthusiastic settings to resemble an anime character
+    utterance.pitch = 1.35 
+    utterance.rate = 1.1
     
     utterance.onstart = () => setIsSpeaking(true)
     utterance.onend = () => setIsSpeaking(false)
@@ -120,12 +197,14 @@ export default function VoiceBuddyPage() {
     setTranscript("")
     setIsThinking(true)
 
-    const systemContext = { role: "user", content: `Note to AI: You are 'Read', an interactive female voice agent clone acting as a brainstorming buddy for the book "${bookTitle}". Keep your answers conversational, concise, and engaging since they will be read aloud.` }
-    
     try {
       const res = await fetch("/api/tutor/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId: id, messages: [systemContext, ...messages, userMsg] }),
+        body: JSON.stringify({
+          bookId: id,
+          messages: [...messages, userMsg],
+          persona: "neo",
+        }),
       })
       
       if (!res.body) throw new Error("No response body")
@@ -183,85 +262,123 @@ export default function VoiceBuddyPage() {
         </Link>
         <div className="text-center">
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-rose-400">
-            Read - Voice Buddy
+            Neo - Voice Buddy
           </h1>
           <p className="text-xs text-gray-500 truncate max-w-[200px]">{bookTitle}</p>
         </div>
-        <div className="w-20" /> {/* Spacer */}
+        
+        {/* Toggle Split Screen */}
+        <button
+          onClick={() => setSplitScreen(!splitScreen)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
+            splitScreen 
+              ? "bg-pink-500/20 text-pink-400 border-pink-500/30 shadow-[0_0_15px_rgba(244,63,94,0.2)]" 
+              : "bg-white/5 text-gray-400 border-white/10 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          {splitScreen ? "Disable Split Screen" : "Split Screen (PDF)"}
+        </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-8">
-        
-        {/* Orb */}
-        <div className="relative flex items-center justify-center mb-12">
-          {/* Outer glow depending on state */}
-          <div className={`absolute w-64 h-64 rounded-full blur-3xl transition-all duration-1000 ${
-            isSpeaking ? "bg-pink-500/30 scale-110 animate-pulse" : 
-            isListening ? "bg-rose-500/20 scale-100" :
-            isThinking ? "bg-purple-500/20 scale-105 animate-spin" :
-            "bg-pink-500/10 scale-90"
-          }`} />
-          
-          <div className={`w-32 h-32 rounded-full flex items-center justify-center relative z-10 transition-all duration-500 border-2 ${
-            isSpeaking ? "bg-gradient-to-tr from-pink-500 to-rose-400 border-pink-300 shadow-[0_0_50px_rgba(244,63,94,0.5)] scale-110" :
-            isListening ? "bg-gradient-to-tr from-rose-600 to-red-500 border-rose-400 shadow-[0_0_30px_rgba(225,29,72,0.4)]" :
-            isThinking ? "bg-gradient-to-tr from-purple-600 to-indigo-500 border-purple-400 shadow-[0_0_30px_rgba(147,51,234,0.4)] animate-pulse" :
-            "bg-black border-pink-900/50"
-          }`}>
-            {isThinking ? (
-              <Loader2 className="w-10 h-10 text-white animate-spin" />
-            ) : isSpeaking ? (
-              <Volume2 className="w-12 h-12 text-white animate-bounce" />
-            ) : isListening ? (
-              <Mic className="w-12 h-12 text-white animate-pulse" />
+      <div className="flex-1 flex flex-col lg:flex-row relative z-10 overflow-hidden">
+        {splitScreen && (
+          <div className="w-full lg:w-1/2 h-[45vh] lg:h-full p-4 border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col relative z-20 animate-in slide-in-from-left duration-300">
+            {pdfUrl ? (
+              <div className="flex-1 bg-white/5 rounded-2xl overflow-hidden border border-white/10 relative shadow-2xl">
+                <iframe
+                  src={`${pdfUrl}#toolbar=0`}
+                  className="w-full h-full border-none"
+                  title="Book PDF"
+                />
+              </div>
             ) : (
-              <div className="text-2xl font-bold text-pink-500">READ</div>
-            )}
-          </div>
-        </div>
-
-        {/* Transcript / Conversation */}
-        <div className="w-full max-w-2xl bg-white/5 border border-white/10 rounded-2xl p-6 h-64 overflow-y-auto backdrop-blur-sm relative shadow-2xl">
-          <div className="space-y-4">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === "user" ? "bg-white/10 text-white" : "bg-gradient-to-r from-pink-500/20 to-rose-500/20 text-pink-100 border border-pink-500/20"
-                }`}>
-                  <div className="text-xs opacity-50 mb-1 font-semibold uppercase tracking-wider">{msg.role === "user" ? "You" : "Read"}</div>
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {transcript && (
-              <div className="flex justify-end opacity-70">
-                <div className="max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed bg-white/5 text-white italic border border-white/10">
-                  {transcript}...
-                </div>
+              <div className="flex-1 bg-white/5 rounded-2xl border border-dashed border-white/10 flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                <FileText className="w-12 h-12 mb-3 text-pink-500/50" />
+                <p className="font-semibold text-white">No PDF File Found</p>
+                <p className="text-sm mt-1">Upload a PDF for this book to view it in split screen mode.</p>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
-        </div>
-        
-        {/* Controls */}
-        <div className="mt-10">
-          <button 
-            onClick={toggleListening}
-            disabled={isThinking}
-            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-              isListening 
-                ? "bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.5)]" 
-                : "bg-white/10 hover:bg-white/20 border border-white/20"
-            }`}
-          >
-            {isListening ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
-          </button>
-        </div>
-        <p className="text-gray-500 text-xs mt-4">
-          {isListening ? "Listening... (Tap to stop)" : "Tap microphone to speak"}
-        </p>
+        )}
 
+        <div className={`flex-1 flex flex-col items-center justify-center p-6 lg:p-8 overflow-y-auto ${splitScreen ? "w-full lg:w-1/2" : "w-full"}`}>
+          
+          {/* Orb */}
+          <div className={`relative flex items-center justify-center ${splitScreen ? "mb-6" : "mb-12"}`}>
+            {/* Outer glow depending on state */}
+            <div className={`absolute rounded-full blur-3xl transition-all duration-1000 ${
+              splitScreen ? "w-48 h-48" : "w-64 h-64"
+            } ${
+              isSpeaking ? "bg-pink-500/30 scale-110 animate-pulse" : 
+              isListening ? "bg-rose-500/20 scale-100" :
+              isThinking ? "bg-purple-500/20 scale-105 animate-spin" :
+              "bg-pink-500/10 scale-90"
+            }`} />
+            
+            <div className={`rounded-full flex items-center justify-center relative z-10 transition-all duration-500 border-2 ${
+              splitScreen ? "w-24 h-24" : "w-32 h-32"
+            } ${
+              isSpeaking ? "bg-gradient-to-tr from-pink-500 to-rose-400 border-pink-300 shadow-[0_0_50px_rgba(244,63,94,0.5)] scale-110" :
+              isListening ? "bg-gradient-to-tr from-rose-600 to-red-500 border-rose-400 shadow-[0_0_30px_rgba(225,29,72,0.4)]" :
+              isThinking ? "bg-gradient-to-tr from-purple-600 to-indigo-500 border-purple-400 shadow-[0_0_30px_rgba(147,51,234,0.4)] animate-pulse" :
+              "bg-black border-pink-900/50"
+            }`}>
+              {isThinking ? (
+                <Loader2 className={`${splitScreen ? "w-8 h-8" : "w-10 h-10"} text-white animate-spin`} />
+              ) : isSpeaking ? (
+                <Volume2 className={`${splitScreen ? "w-8 h-8" : "w-12 h-12"} text-white animate-bounce`} />
+              ) : isListening ? (
+                <Mic className={`${splitScreen ? "w-8 h-8" : "w-12 h-12"} text-white animate-pulse`} />
+              ) : (
+                <div className={`font-bold text-pink-500 ${splitScreen ? "text-xl" : "text-2xl"}`}>NEO</div>
+              )}
+            </div>
+          </div>
+
+          {/* Transcript / Conversation */}
+          <div className="w-full max-w-2xl bg-white/5 border border-white/10 rounded-2xl p-6 h-64 overflow-y-auto backdrop-blur-sm relative shadow-2xl">
+            <div className="space-y-4">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === "user" ? "bg-white/10 text-white" : "bg-gradient-to-r from-pink-500/20 to-rose-500/20 text-pink-100 border border-pink-500/20"
+                  }`}>
+                    <div className="text-xs opacity-50 mb-1 font-semibold uppercase tracking-wider">{msg.role === "user" ? "You" : "Neo"}</div>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {transcript && (
+                <div className="flex justify-end opacity-70">
+                  <div className="max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed bg-white/5 text-white italic border border-white/10">
+                    {transcript}...
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+          
+          {/* Controls */}
+          <div className="mt-10">
+            <button 
+              onClick={toggleListening}
+              disabled={isThinking}
+              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                isListening 
+                  ? "bg-red-500 hover:bg-red-600 shadow-[0_0_30px_rgba(239,68,68,0.5)]" 
+                  : "bg-white/10 hover:bg-white/20 border border-white/20"
+              }`}
+            >
+              {isListening ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
+            </button>
+          </div>
+          <p className="text-gray-500 text-xs mt-4">
+            {isListening ? "Listening... (Tap to stop)" : "Tap microphone to speak"}
+          </p>
+
+        </div>
       </div>
     </div>
   )
