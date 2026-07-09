@@ -7,7 +7,7 @@ import { Book } from "@/types"
 import {
   BookOpen, Trash2, RefreshCw, ChevronRight, Clock,
   CheckCircle2, XCircle, PlayCircle, Award, Plus,
-  Sparkles, Library, GraduationCap, X
+  Sparkles, Library, GraduationCap, X, MoreVertical, Mic, Bot, Brain
 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -48,6 +48,7 @@ function BookCard({
   deletingId: string | null
 }) {
   const router = useRouter()
+  const [menuOpen, setMenuOpen] = useState(false)
   const coverClass = getBookCoverClass(book.title ?? "book")
   const pct      = prog && prog.total > 0 ? Math.round((prog.mastered / prog.total) * 100) : 0
   const started  = !!prog && prog.mastered > 0
@@ -116,26 +117,85 @@ function BookCard({
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 mt-3" onClick={e => e.stopPropagation()}>
+        {/* Actions Row with Dropdown */}
+        <div className="flex items-center gap-2 mt-3 relative" onClick={e => e.stopPropagation()}>
           {book.status === "ready" && (
-            <Link
-              href={`/books/${book.id}/course`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 justify-center"
-              style={{
-                background: complete ? "rgba(245,166,35,0.15)" : started ? "rgba(124,111,224,0.15)" : "rgba(255,255,255,0.06)",
-                color:      complete ? "#F5A623"               : started ? "#A78BFA"               : "#9BA3BE",
-                border:     complete ? "1px solid rgba(245,166,35,0.3)" : started ? "1px solid rgba(124,111,224,0.3)" : "1px solid #2A2F42",
-              }}
-            >
-              <PlayCircle className="w-3.5 h-3.5" />
-              {complete ? "Review" : started ? `Continue ${pct}%` : "Start Course"}
-            </Link>
+            <>
+              <div className="relative flex-1">
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all w-full justify-center cursor-pointer shadow-lg hover:scale-[1.01] active:scale-[0.99] border border-white/5"
+                  style={{
+                    background: complete 
+                      ? "linear-gradient(135deg, #F5A623, #FF6B35)" 
+                      : "linear-gradient(135deg, #7C6FE0, #60A5FA)",
+                    color: "#0D0F14",
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Study Deck {menuOpen ? "▲" : "▼"}
+                </button>
+
+                {menuOpen && (
+                  <>
+                    {/* Click-away backdrop */}
+                    <div 
+                      className="fixed inset-0 z-30 cursor-default" 
+                      onClick={() => setMenuOpen(false)}
+                    />
+                    
+                    {/* Glassmorphic Dropdown Menu */}
+                    <div className="absolute right-0 bottom-full mb-3 w-56 rounded-2xl border border-white/10 bg-[#0E1118]/95 backdrop-blur-xl shadow-2xl p-3 z-40 animate-fade-up flex flex-col gap-2">
+                      <div className="px-1 text-[9px] uppercase tracking-widest font-semibold opacity-40 mb-1 text-muted-foreground text-left">
+                        Select Learning Mode
+                      </div>
+                      
+                      <Link
+                        href={`/books/${book.id}/course`}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-xs transition-all shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+                        Start Course
+                      </Link>
+
+                      <Link
+                        href={`/books/${book.id}`}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-[#1D2433] hover:bg-[#283247] border border-[#2E3B54] text-white font-semibold text-xs transition-all shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <Bot className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                        Study with Tutor
+                      </Link>
+
+                      <Link
+                        href={`/books/${book.id}/course`}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold text-xs transition-all shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <Brain className="w-3.5 h-3.5 shrink-0 text-amber-200" />
+                        Take a Quiz
+                      </Link>
+
+                      <Link
+                        href={`/books/${book.id}/voice-buddy`}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-semibold text-xs transition-all shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <Mic className="w-3.5 h-3.5 shrink-0" />
+                        Talk to Neo
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           )}
+
           {book.status === "failed" && (
             <button
               onClick={e => onRetry(book.id, e)}
-              className="p-1.5 rounded-lg transition-colors"
+              className="p-1.5 rounded-lg transition-colors shrink-0"
               style={{ color: "#5C6480" }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#F5A623"}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#5C6480"}
@@ -143,19 +203,17 @@ function BookCard({
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           )}
+
           <button
             onClick={e => onDelete(book.id, e)}
             disabled={deletingId === book.id}
-            className="p-1.5 rounded-lg transition-colors"
+            className="p-1.5 rounded-lg transition-colors ml-auto shrink-0 cursor-pointer"
             style={{ color: "#5C6480" }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#F87171"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#5C6480"}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-          {book.status === "ready" && (
-            <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-30 group-hover:opacity-70 transition-opacity" style={{ color: "#9BA3BE" }} />
-          )}
         </div>
       </div>
     </div>
@@ -234,11 +292,11 @@ export default function DashboardPage() {
 
     const prog: Record<string, BookProgress> = {}
     for (const id of readyIds) {
-      const bc = (conceptsRes.data ?? []).filter(c => c.book_id === id)
+      const bc = (conceptsRes.data as any[] ?? []).filter((c: any) => c.book_id === id)
       prog[id] = {
         total:    bc.length,
-        mastered: bc.filter(c => c.mastery_state === "mastered").length,
-        hasCert:  (certsRes.data ?? []).some(c => c.book_id === id),
+        mastered: bc.filter((c: any) => c.mastery_state === "mastered").length,
+        hasCert:  (certsRes.data as any[] ?? []).some((c: any) => c.book_id === id),
       }
     }
     setProgress(prog)
