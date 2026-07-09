@@ -1068,7 +1068,7 @@ export default function LandingPageClient({ isAuthenticated }: { isAuthenticated
                             return (
                               <span 
                                 key={i} 
-                                className="w-1 bg-amber-500 rounded-full animate-pulse"
+                                className="w-1 bg-amber-500 rounded-full animate-wave will-change-transform"
                                 style={{
                                   height: `${20 + Math.random() * 40}px`,
                                   animationDelay: delay,

@@ -141,3 +141,41 @@
 .book-cover-3 { background: linear-gradient(135deg, #5f3d1e 0%, #a06030 100%); }
 .book-cover-4 { background: linear-gradient(135deg, #1e3550 0%, #c8502a 100%); }
 .book-cover-5 { background: linear-gradient(135deg, #4a1e1e 0%, #a03030 100%); }
+
+/* ── Shimmer foil sweep for certificates ── */
+@keyframes shimmerSweep {
+  0% { transform: translateX(-150%) rotate(25deg); }
+  100% { transform: translateX(150%) rotate(25deg); }
+}
+.animate-shimmer {
+  animation: shimmerSweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* ── Shake animation for incorrect quiz choices ── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+.animate-shake {
+  animation: shake 0.35s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* ── Dynamic bouncing wave for Voice Buddy ── */
+@keyframes waveBounce {
+  0%, 100% { transform: scaleY(0.2); }
+  50% { transform: scaleY(1); }
+}
+.animate-wave {
+  animation: waveBounce 1s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* ── Smooth Scrolling & Performance Optimizations ── */
+html {
+  scroll-behavior: smooth;
+}
+
+.will-change-transform {
+  will-change: transform;
+}
