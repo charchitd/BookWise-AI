@@ -26,8 +26,9 @@ export async function middleware(request: NextRequest) {
 
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup')
   const isApiRoute = pathname.startsWith('/api')
+  const isLandingPage = pathname === '/'
 
-  if (!user && !isAuthRoute && !isApiRoute) {
+  if (!user && !isAuthRoute && !isApiRoute && !isLandingPage) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

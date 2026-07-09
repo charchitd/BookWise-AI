@@ -2,6 +2,8 @@
 
 **Transform passive reading into an interactive, gamified learning experience.**
 
+👉 **[Live Demo Landing Page (Localhost)](http://localhost:3000)** (Start the local dev server and click to explore the interactive sandbox demo!)
+
 BookWise AI is an intelligent platform that turns static PDF documents and e-books into dynamic, bite-sized courses. Powered by advanced Large Language Models, it automatically ingests, segments, and curates your reading materials into manageable sessions—making complex subjects incredibly easy to digest, retain, and master.
 
 ---
